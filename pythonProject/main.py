@@ -55,14 +55,29 @@ class AbstractCar:
         self.vel = min(self.vel + self.acceleration, self.max_vel)
         self.move()
 
+    def move_backward(self):
+        self.vel = max(self.vel - self.acceleration, -self.max_vel / 2)
+        self.move()
+
     def reduce_speed(self):
         self.vel = max(self.vel - self.acceleration / 2, 0)
         self.move()
+
+    def collide(self, mask, x=0, y=0):
+        car_mask = pygame.mask.from_surface(self.img)
+        offset = (int(self.x - x), int(self.y - y))
+        poi = mask.overlap(car_mask, offset)
+        return poi
 
 
 class Car(AbstractCar):
     IMG = RED_CAR
     START_POS = (180, 200)
+
+    def bounce(self):
+        self.vel = -self.vel / 1.5
+        print(self.vel)
+        self.move()
 
 class GameInfo:
     LEVELS = 5
@@ -94,6 +109,25 @@ class GameInfo:
         return round(time.time() - self.time)
 
 
+def player_move(player_car):
+    keys = pygame.key.get_pressed()
+    moved = False
+
+    if keys[pygame.K_a]:
+        player_car.rotate(left=True)
+    if keys[pygame.K_d]:
+        player_car.rotate(right=True)
+    if keys[pygame.K_w]:
+        moved = True
+        player_car.move_forward()
+    if keys[pygame.K_s]:
+        moved = True
+        player_car.move_backward()
+
+    if not moved:
+        player_car.reduce_speed()
+
+
 def draw(win, images, player_car):
     for img, pos in images:
         win.blit(img, pos)
@@ -108,7 +142,7 @@ clock = pygame.time.Clock()
 images = [(GRASS, (0, 0)), (TRACK, (0, 0)),
           (FINISH_LINE, FINISH_LINE_POS), (TRACK_BOARD, (0, 0))]
 
-player_car = Car(4, 4)
+player_car = Car(4, 5)
 
 
 
@@ -122,19 +156,12 @@ while run:
             run = False
             break
 
-    keys = pygame.key.get_pressed()
-    moved = False
+    player_move(player_car)
 
-    if keys[pygame.K_a]:
-        player_car.rotate(left=True)
-    if keys[pygame.K_d]:
-        player_car.rotate(right=True)
-    if keys[pygame.K_w]:
-        moved = True
-        player_car.move_forward()
+    if player_car.collide(TRACK_BOARD_MASK) != None:
+        player_car.bounce()
 
-    if not moved:
-        player_car.reduce_speed()
+
 
 
 pygame.quit()
