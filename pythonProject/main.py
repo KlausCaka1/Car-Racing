@@ -5,9 +5,9 @@ from utils import scaleImage, blit_rotate_img
 import neat
 
 GRASS = scaleImage(pygame.image.load("imgs/grass.jpg"), 2.5)
-TRACK = scaleImage(pygame.image.load("imgs/track1.png"), 0.45)
+TRACK = scaleImage(pygame.image.load("imgs/track.png"), 1)
 
-TRACK_BOARD = scaleImage(pygame.image.load("imgs/track-border1.png"), 0.9)
+TRACK_BOARD = scaleImage(pygame.image.load("imgs/track-border.png"), 1)
 TRACK_BOARD_MASK = pygame.mask.from_surface(TRACK_BOARD)
 
 FINISH_LINE = scaleImage(pygame.image.load("imgs/finish.png"), 1.2)
@@ -24,7 +24,7 @@ pygame.display.set_caption("RACE GAME")
 
 FPS = 60
 generation = 1
-BORDER_COLOR = (255, 255, 255, 255) # Color To Crash on Hit
+BORDER_COLOR = (0, 0, 0, 255) # Color To Crash on Hit
 
 
 class AbstractCar:
@@ -79,31 +79,41 @@ class AbstractCar:
 
     def check_radar(self, game_map):
         self.radars.clear()
-        length = 0
-        self.center = [int(self.x), int(self.y)]
+        self.center = [int(self.x + RED_CAR.get_width() / 2), int(self.y + RED_CAR.get_height() / 2)]
 
         # Use -60 to 60 for a cleaner "Front View" cone
-        for degree in range(-60, 61, 30):
+        map_width, map_height = game_map.get_width(), game_map.get_height()
+
+        for degree in range(-180, 81, 30):
             length = 0
 
-            # FIX: Use SIN for X and COS for Y to match your move() function
-            # Also notice the formula change slightly to align with your movement logic
-            x = int(self.center[0] - math.sin(math.radians(360 - (self.angle + degree))) * length)
-            y = int(self.center[1] - math.cos(math.radians(360 - (self.angle + degree))) * length)
+            # Calculate initial x, y
+            x = int(self.center[0] - math.cos(math.radians(360 - (self.angle + degree))))
+            y = int(self.center[1] - math.sin(math.radians(360 - (self.angle + degree))))
 
-            while not game_map.get_at((x, y)) == BORDER_COLOR and length < 100:
+            # We change the loop to strictly check length first
+            while length < 100:
+
+                # 1. SAFETY CHECK: Ensure coordinates are within the map boundaries
+                if x < 0 or x >= map_width or y < 0 or y >= map_height:
+                    break  # Stop the ray if it goes off the screen
+
+                # 2. WALL CHECK: Check for collision
+                if game_map.get_at((x, y)) == BORDER_COLOR:
+                    break  # Stop the ray if it hits a wall
+
+                # 3. Extend the ray
                 length += 1
-                # FIX: Swap Sin/Cos here inside the loop too
-                x = int(self.center[0] - math.sin(math.radians(360 - (self.angle + degree))) * length)
-                y = int(self.center[1] - math.cos(math.radians(360 - (self.angle + degree))) * length)
+                x = int(self.center[0] - math.cos(math.radians(360 - (self.angle + degree))) * length)
+                y = int(self.center[1] - math.sin(math.radians(360 - (self.angle + degree))) * length)
 
+            # Calculate distance and append
             dist = int(math.sqrt(math.pow(x - self.center[0], 2) + math.pow(y - self.center[1], 2)))
             self.radars.append([(x, y), dist])
 
     def draw_radar(self, win):
         for radar in self.radars:
             position = radar[0]
-            print(position)
             pygame.draw.line(win, (0, 255, 0), self.center, position, 1)
             pygame.draw.circle(win, (255, 0, 0), position, 3)
 
@@ -123,7 +133,7 @@ class Car(AbstractCar):
     START_POS = (180, 200)
 
     def bounce(self):
-        self.vel = -self.vel / 1.5
+        self.vel = -self.vel
         self.move()
 
 
@@ -221,6 +231,10 @@ def run_simulation(genomes, config):
         for i, car in enumerate(cars):
             car.check_radar(GAME_MAP)
 
+            if car.collide(TRACK_BOARD_MASK) != None:
+                car.bounce()
+
+
 
         draw(WIN, images, cars)
         player_move(cars[0])
@@ -244,8 +258,6 @@ def run_simulation(genomes, config):
 
 
 
-        if player_car.collide(TRACK_BOARD_MASK) != None:
-            player_car.bounce()
 
     pygame.quit()
 
