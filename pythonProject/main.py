@@ -2,11 +2,12 @@ import pygame
 import time
 import math
 from utils import scaleImage, blit_rotate_img
+import neat
 
 GRASS = scaleImage(pygame.image.load("imgs/grass.jpg"), 2.5)
-TRACK = scaleImage(pygame.image.load("imgs/track.png"), 1)
+TRACK = scaleImage(pygame.image.load("imgs/track1.png"), 0.45)
 
-TRACK_BOARD = scaleImage(pygame.image.load("imgs/track-border.png"), 1)
+TRACK_BOARD = scaleImage(pygame.image.load("imgs/track-border1.png"), 0.9)
 TRACK_BOARD_MASK = pygame.mask.from_surface(TRACK_BOARD)
 
 FINISH_LINE = scaleImage(pygame.image.load("imgs/finish.png"), 1.2)
@@ -22,6 +23,9 @@ pygame.display.set_caption("RACE GAME")
 
 
 FPS = 60
+generation = 1
+BORDER_COLOR = (255, 255, 255, 255) # Color To Crash on Hit
+
 
 class AbstractCar:
     def __init__(self, max_vel, rotation_vel):
@@ -33,6 +37,10 @@ class AbstractCar:
         self.vel = 0
         self.acceleration = 0.1
         self.x, self.y = self.START_POS
+        self.radars = []
+
+        self.center = [self.x + RED_CAR.get_width() / 2, self.y + RED_CAR.get_height() / 2] # Calculate Center
+
 
     def rotate(self, left=False, right=False):
         if left:
@@ -69,6 +77,46 @@ class AbstractCar:
         poi = mask.overlap(car_mask, offset)
         return poi
 
+    def check_radar(self, game_map):
+        self.radars.clear()
+        length = 0
+        self.center = [int(self.x), int(self.y)]
+
+        # Use -60 to 60 for a cleaner "Front View" cone
+        for degree in range(-60, 61, 30):
+            length = 0
+
+            # FIX: Use SIN for X and COS for Y to match your move() function
+            # Also notice the formula change slightly to align with your movement logic
+            x = int(self.center[0] - math.sin(math.radians(360 - (self.angle + degree))) * length)
+            y = int(self.center[1] - math.cos(math.radians(360 - (self.angle + degree))) * length)
+
+            while not game_map.get_at((x, y)) == BORDER_COLOR and length < 100:
+                length += 1
+                # FIX: Swap Sin/Cos here inside the loop too
+                x = int(self.center[0] - math.sin(math.radians(360 - (self.angle + degree))) * length)
+                y = int(self.center[1] - math.cos(math.radians(360 - (self.angle + degree))) * length)
+
+            dist = int(math.sqrt(math.pow(x - self.center[0], 2) + math.pow(y - self.center[1], 2)))
+            self.radars.append([(x, y), dist])
+
+    def draw_radar(self, win):
+        for radar in self.radars:
+            position = radar[0]
+            print(position)
+            pygame.draw.line(win, (0, 255, 0), self.center, position, 1)
+            pygame.draw.circle(win, (255, 0, 0), position, 3)
+
+
+    def get_data(self):
+        radars = self.radars
+        return_values = [0, 0, 0, 0, 0]
+        for i, radar in enumerate(radars):
+            return_values[i] = int(radar[1] / 30)
+
+        return return_values
+
+
 
 class Car(AbstractCar):
     IMG = RED_CAR
@@ -76,8 +124,10 @@ class Car(AbstractCar):
 
     def bounce(self):
         self.vel = -self.vel / 1.5
-        print(self.vel)
         self.move()
+
+
+
 
 class GameInfo:
     LEVELS = 5
@@ -128,40 +178,91 @@ def player_move(player_car):
         player_car.reduce_speed()
 
 
-def draw(win, images, player_car):
+def draw(win, images, cars):
     for img, pos in images:
         win.blit(img, pos)
 
-    player_car.draw(win)
+    for i, car in enumerate(cars):
+        car.draw(win)
+        car.draw_radar(WIN)
+
     pygame.display.update()
 
 
+def run_simulation(genomes, config):
+    nets = []
+    cars = []
 
-run = True
-clock = pygame.time.Clock()
-images = [(GRASS, (0, 0)), (TRACK, (0, 0)),
-          (FINISH_LINE, FINISH_LINE_POS), (TRACK_BOARD, (0, 0))]
+    run = True
+    clock = pygame.time.Clock()
+    images = [(GRASS, (0, 0)), (TRACK, (0, 0)),
+              (FINISH_LINE, FINISH_LINE_POS), (TRACK_BOARD, (0, 0))]
+    GAME_MAP = TRACK_BOARD.convert()
 
-player_car = Car(4, 5)
+    for i, g in genomes:
+        net = neat.nn.FeedForwardNetwork.create(g, config)
+        nets.append(net)
 
+        player_car = Car(4, 5)
+        g.fitness = 0
 
-
-while run:
-    clock.tick(FPS)
-
-    draw(WIN, images, player_car)
-
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            run = False
-            break
-
-    player_move(player_car)
-
-    if player_car.collide(TRACK_BOARD_MASK) != None:
-        player_car.bounce()
+        cars.append(player_car)
 
 
+    while run:
+        clock.tick(FPS)
 
 
-pygame.quit()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                run = False
+                break
+
+        for i, car in enumerate(cars):
+            car.check_radar(GAME_MAP)
+
+
+        draw(WIN, images, cars)
+        player_move(cars[0])
+
+
+        # for i, car in enumerate(cars):
+        #     output = nets[i].activate(car.get_data())
+        #     choice = output.index(max(output))
+        #     if choice == 0:
+        #         car.angle += 10  # Left
+        #     elif choice == 1:
+        #         car.angle -= 10  # Right
+        #     elif choice == 2:
+        #         if (car.speed - 2 >= 12):
+        #             car.speed -= 2  # Slow Down
+        #     else:
+        #         car.speed += 2
+
+
+        still_alive = 0
+
+
+
+        if player_car.collide(TRACK_BOARD_MASK) != None:
+            player_car.bounce()
+
+    pygame.quit()
+
+
+if __name__ == "__main__":
+    config_path = "./config.txt"
+    config = neat.config.Config(neat.DefaultGenome,
+                                neat.DefaultReproduction,
+                                neat.DefaultSpeciesSet,
+                                neat.DefaultStagnation,
+                                config_path)
+
+    # Create Population And Add Reporters
+    population = neat.Population(config)
+    population.add_reporter(neat.StdOutReporter(True))
+    stats = neat.StatisticsReporter()
+    population.add_reporter(stats)
+
+    population.run(run_simulation, 1)
+
