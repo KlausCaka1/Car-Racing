@@ -47,6 +47,7 @@ class AbstractCar:
         self.position = [860, 920]  # Starting Position
         self.angle = 0
         self.speed = 0
+        self.max_speed = 0
 
         self.speed_set = False  # Flag For Default Speed Later on
 
@@ -66,6 +67,10 @@ class AbstractCar:
     def draw(self, screen):
         screen.blit(self.rotated_sprite, self.position)  # Draw Sprite
         self.draw_radar(screen)
+
+    def speed_up(self):
+        if self.speed > self.max_speed:
+            self.speed += 1
 
     def draw_radar(self, win):
         for radar in self.radars:
@@ -101,7 +106,7 @@ class AbstractCar:
 
     def update(self, game_map):
         if not self.speed_set:
-            self.speed = 20
+            self.speed = 15
             self.speed_set = True
 
         self.rotated_sprite = rotate_center(self.sprite, self.angle)
@@ -215,7 +220,7 @@ def run_simulation(genomes, config, counter=0):
                 if (car.speed - 2 >= 12):
                     car.speed -= 2  # Slow Down
             else:
-                car.speed += 2  # Speed Up
+                car.speed_up() # Speed Up
 
         # Check If Car Is Still Alive
         # Increase Fitness If Yes And Break Loop If Not
